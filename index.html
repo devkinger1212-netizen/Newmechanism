@@ -225,7 +225,7 @@
             let globalBorda = getBordaScores(n, prefs);
             log.push(`> Global Borda Scores: ${JSON.stringify(globalBorda)}`);
 
-            // Step 2: Fix Strict Pairs
+            // Step 2: Identify ALL Mutual Pairs and Sort by Strength
             let fixedRoles = {};
             let potentialPairs = [];
 
@@ -236,32 +236,47 @@
                         let pListJ = prefs[partner] || [];
                         let rankJ = pListJ.indexOf(i);
                         if (rankJ !== -1) {
-                            let maxRank = Math.max(rankI, rankJ);
-                            if (maxRank <= 1) { // Top 2 check
-                                potentialPairs.push({u: i, v: partner, score: maxRank});
-                            }
+                            // Score = Sum of Ranks (Lower is better)
+                            let score = rankI + rankJ;
+                            potentialPairs.push({u: i, v: partner, score: score});
                         }
                     }
                 });
             }
 
+            // Sort potential pairs by score (lowest score = strongest pair)
             potentialPairs.sort((a, b) => a.score - b.score);
 
+            // Step 3: Greedily Fix Disjoint Pairs
             potentialPairs.forEach(p => {
                 let u = p.u; 
                 let v = p.v;
+                
+                // Only fix if BOTH are currently unassigned
                 if (!fixedRoles.hasOwnProperty(u) && !fixedRoles.hasOwnProperty(v)) {
-                    // Tie-break with Borda
-                    if (globalBorda[u] >= globalBorda[v]) {
+                    
+                    // Priority 1: Role Preference
+                    let prefU = rolePref[u] || 'L';
+                    let prefV = rolePref[v] || 'L';
+
+                    if (prefU === 'L' && prefV === 'F') {
                         fixedRoles[u] = 'L'; fixedRoles[v] = 'F';
-                    } else {
+                    } else if (prefU === 'F' && prefV === 'L') {
                         fixedRoles[u] = 'F'; fixedRoles[v] = 'L';
+                    } else {
+                        // Priority 2: Popularity (Global Borda)
+                        if (globalBorda[u] >= globalBorda[v]) {
+                            fixedRoles[u] = 'L'; fixedRoles[v] = 'F';
+                        } else {
+                            fixedRoles[u] = 'F'; fixedRoles[v] = 'L';
+                        }
                     }
-                    log.push(`> Fixed Strict Pair (${u}, ${v}) -> ${u}:${fixedRoles[u]}, ${v}:${fixedRoles[v]}`);
+                    
+                    log.push(`> Fixed Pair (${u}, ${v}) [Score ${p.score}] -> ${u}:${fixedRoles[u]}, ${v}:${fixedRoles[v]}`);
                 }
             });
 
-            // Step 3: Fill Remaining
+            // Step 4: Fill Remaining Spots (Using Borda)
             let remaining = [];
             for (let i = 1; i <= n; i++) {
                 if (!fixedRoles.hasOwnProperty(i)) remaining.push(i);
@@ -295,7 +310,7 @@
 
             log.push(`> Final Partition -> Leaders: [${leaders.join(', ')}], Followers: [${followers.join(', ')}]`);
 
-            // Step 4: DA
+            // Step 5: DA
             let prefL = {};
             let prefF = {};
 
